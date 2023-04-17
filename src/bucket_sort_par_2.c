@@ -19,9 +19,6 @@
 #define T 1
 #endif /*T*/
 
-int* init_int_array(int n){
-    return (int*) malloc(n * sizeof(int));
-}
 
 float* init_array(int n) {
     float* result = (float*) malloc(n * sizeof(float));
@@ -42,8 +39,7 @@ float** init_2d_array(int n, int m) {
 }
 
 void free_2d_array(float** arr, int n) {
-    int i;
-    for (i = 0; i < n; i++){
+    for (int i = 0; i < n; i++){
         free(arr[i]);
     }
     free(arr);
@@ -65,7 +61,7 @@ int asc(const void * a, const void * b) {
     return (va > vb) - (va < vb);
 }
 
-void fill_array_rand(float* arr, int n, int tid) {
+void fill_array_randomly(float* arr, int n, int tid) {
     int i;
     unsigned short xi[3];
     time_t sec = time(NULL);
@@ -99,16 +95,14 @@ int compute_buck_start_ind(int thr){
 
 int compute_buck_end_ind(int thr){
     if (thr == P - 1) return B-1;
-
     return compute_buck_start_ind(thr + 1) - 1;
 }
 
 
-void distribute_to_buckets(float* arr, float** buckets, int* bucket_ind){
-    int tid = omp_get_thread_num(); // Numer wątku
-    int chunk_size = N / P; // Rozmiar fragmentu tablicy na jeden wątek
-    int start = tid * chunk_size; // Początkowy indeks fragmentu tablicy dla danego wątku
-    int end = start + chunk_size; // Końcowy indeks fragmentu tablicy dla danego wątku
+void distribute_to_buckets(int tid, float* arr, float** buckets, int* bucket_ind){
+    int chunk_size = N / P;         // Rozmiar fragmentu tablicy na jeden wątek
+    int start = tid * chunk_size;   // Początkowy indeks fragmentu tablicy dla danego wątku
+    int end = start + chunk_size;   // Końcowy indeks fragmentu tablicy dla danego wątku
 
     for (int i = start; i < end; i++) {
         add_to_bucket(buckets, bucket_ind, arr[i]);
@@ -116,18 +110,16 @@ void distribute_to_buckets(float* arr, float** buckets, int* bucket_ind){
 }
 
 void sort_buckets(float** buckets, int* bucket_ind, int start_ind, int end_ind) {
-    int i;
-    for (i = start_ind; i <= end_ind; i++){
+    for (int i = start_ind; i <= end_ind; i++){
         qsort(buckets[i], bucket_ind[i], sizeof(*(buckets[i])), asc);
     }
 }
 
 void merge_buckets(float* arr, float** buckets, const int* bucket_ind, int bucket_start_ind, int from, int to){
-    int j;
     int bucket_num = bucket_start_ind;
     int i = from;
     while (i < to) {
-        for (j = 0; j < bucket_ind[bucket_num]; j++) {
+        for (int j = 0; j < bucket_ind[bucket_num]; j++) {
             arr[i] = buckets[bucket_num][j];
             i++;
         }
@@ -135,18 +127,15 @@ void merge_buckets(float* arr, float** buckets, const int* bucket_ind, int bucke
     }
 }
 
-
 void print_float_arr(float* arr, int n){
-    int i;
-    for (i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
         printf("%4f, ", arr[i]);
     }
     printf("\n");
 }
 
 int is_sorted(const float* arr, int n){
-    int i;
-    for (i = 1; i < n; i++){
+    for (int i = 1; i < n; i++){
         if (arr[i-1] > arr[i]){
             return 0;
         }
@@ -154,14 +143,9 @@ int is_sorted(const float* arr, int n){
     return 1;
 }
 
-char* print_is_sorted(int sorted){
-    return sorted ? "true" : "false";
-}
-
 double avg(const double* arr, int n){
-    int i;
     double sum = 0;
-    for (i = 0; i < n; i++){
+    for (int i = 0; i < n; i++){
         sum += arr[i];
     }
     return sum / (float) n;
@@ -182,10 +166,12 @@ int main() {
     #pragma omp parallel
     {
         int tid = omp_get_thread_num();
-        fill_array_rand(arr, N, tid);
+        fill_array_randomly(arr, N, tid);
         t_a_arr[tid] = omp_get_wtime();
-        distribute_to_buckets(arr, buckets, bucket_ind);
+
+        distribute_to_buckets(tid, arr, buckets, bucket_ind);
         #pragma omp barrier
+
         t_b_arr[tid] = omp_get_wtime();
         int buck_start_ind = compute_buck_start_ind(tid);
         int buck_end_ind = compute_buck_end_ind(tid);
@@ -211,7 +197,8 @@ int main() {
     double t_c_delta = avg(t_c_arr, P) - avg(t_b_arr, P);
     double t_d_delta = t_end - avg(t_c_arr, P);
     double t_all = t_end - t_start;
-    printf("%d,%d,%d,%d,%f,%f,%f,%f,%f,%s\n", N, B, P, T, t_a_delta, t_b_delta, t_c_delta, t_d_delta, t_all, print_is_sorted(sorted));
+    printf("%d,%d,%d,%d,%f,%f,%f,%f,%f,%s\n", N, B, P, T, t_a_delta, t_b_delta, t_c_delta, t_d_delta, t_all,
+           sorted ? "true" : "false");
 
     free(arr);
     free(bucket_ind);
@@ -219,5 +206,4 @@ int main() {
     free(t_a_arr);
     free(t_b_arr);
     free(t_c_arr);
-    return 0;
 }
