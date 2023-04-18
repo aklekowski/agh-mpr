@@ -4,7 +4,7 @@
 #include <time.h>
 
 #ifndef N
-#define N 10000000
+#define N 1000000
 #endif /*N*/
 
 #ifndef B
@@ -76,16 +76,6 @@ void fill_array_randomly(float* arr, int n, int tid) {
     }
 }
 
-void add_to_bucket(float** buckets, int* bucket_ind, float val){
-    int number_of_bucket = (int) B*val;
-    #pragma omp critical
-    {
-        int number_of_elements_in_bucket = bucket_ind[number_of_bucket];
-        buckets[number_of_bucket][number_of_elements_in_bucket] = val;
-        bucket_ind[number_of_bucket]++;
-    }
-}
-
 
 int compute_buck_start_ind(int thr){
     float step = (float) B / (float) P;
@@ -99,13 +89,17 @@ int compute_buck_end_ind(int thr){
 }
 
 
-void distribute_to_buckets(int tid, float* arr, float** buckets, int* bucket_ind){
-    int chunk_size = N / P;         // Rozmiar fragmentu tablicy na jeden wątek
-    int start = tid * chunk_size;   // Początkowy indeks fragmentu tablicy dla danego wątku
-    int end = start + chunk_size;   // Końcowy indeks fragmentu tablicy dla danego wątku
-
-    for (int i = start; i < end; i++) {
-        add_to_bucket(buckets, bucket_ind, arr[i]);
+void distribute_to_buckets(float* arr, float** buckets, int* bucket_ind){
+    int i;
+    #pragma omp for private(i) schedule(guided)
+    for (i = 0; i < N; i++) {
+        int number_of_bucket = (int) B*arr[i];
+        #pragma omp critical
+        {
+            int number_of_elements_in_bucket = bucket_ind[number_of_bucket];
+            buckets[number_of_bucket][number_of_elements_in_bucket] = arr[i];
+            bucket_ind[number_of_bucket]++;
+        }
     }
 }
 
@@ -166,18 +160,19 @@ int main() {
     #pragma omp parallel
     {
         int tid = omp_get_thread_num();
+
         fill_array_randomly(arr, N, tid);
         t_a_arr[tid] = omp_get_wtime();
 
-        distribute_to_buckets(tid, arr, buckets, bucket_ind);
-        #pragma omp barrier
-
+        distribute_to_buckets(arr, buckets, bucket_ind);
         t_b_arr[tid] = omp_get_wtime();
+
         int buck_start_ind = compute_buck_start_ind(tid);
         int buck_end_ind = compute_buck_end_ind(tid);
         sort_buckets(buckets, bucket_ind, buck_start_ind, buck_end_ind);
         #pragma omp barrier
         t_c_arr[tid] = omp_get_wtime();
+
         int merge_start_ind = 0;
         for (int i = 0; i < buck_start_ind; i++) {
             merge_start_ind += bucket_ind[i];
