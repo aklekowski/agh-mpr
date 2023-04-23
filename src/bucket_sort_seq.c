@@ -15,6 +15,7 @@
 #define T 1
 #endif /*T*/
 
+
 int* init_int_array(long long n){
 	return (int*) malloc(n * sizeof(int));
 }
@@ -57,23 +58,16 @@ int asc(const void * a, const void * b) {
 }
 
 void fill_array_rand(float* arr, int n) {
-	int i;
 	unsigned short xi[3];
-	unsigned short tid;
 	time_t t = time(NULL);
 
-	#pragma omp parallel private(tid, xi)
-	{
-		tid = omp_get_thread_num();
-		xi[0] = tid + t;
-		xi[1] = tid + 2 + t;
-		xi[2] = tid + 1 + t;
+    xi[0] = t;
+    xi[1] = t + 2;
+    xi[2] = t + 1;
 
-		#pragma omp for private(i) schedule(guided)
-		for (i = 0; i < n; i++){
-			arr[i] = erand48(xi);
-		}
-	}
+    for (int i = 0; i < n; i++){
+        arr[i] = erand48(xi);
+    }
 }
 
 void distribute_to_buckets(float* arr, float** buckets, int* bucket_ind, int n, int b){
@@ -117,26 +111,43 @@ void print_arr(float* arr, int n){
 	printf("\n");
 }
 
+int is_sorted(const float* arr, int n) {
+    for (int i = 1; i < n; i++){
+        if (arr[i-1] > arr[i]){
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int main() {
-	omp_set_num_threads(PROC_NUM);
-
 	float* arr = init_array(N);
-	float** buckets = init_2d_array(B, N);
+	float** buckets = init_2d_array(B, 10*(N/B));
 	int* bucket_ind = init_bucket_indices(B);
-	
-	long long size_of_arr = N * sizeof(float);
 
-	double t1 = omp_get_wtime();
+	double t_start = omp_get_wtime();
 	fill_array_rand(arr, N);
+    double t_a = omp_get_wtime();
 
 	distribute_to_buckets(arr, buckets, bucket_ind, N, B);
-	sort_buckets(buckets, bucket_ind, B);  
+    double t_b = omp_get_wtime();
+
+	sort_buckets(buckets, bucket_ind, B);
+    double t_c = omp_get_wtime();
+
 	merge_buckets(arr, buckets, bucket_ind, N);
-	double t2 = omp_get_wtime();
-	print_arr(arr, N);
- 	 printf("%f,%lld\n", t2 - t1, size_of_arr);
-	
-	free(arr);
+	double t_end = omp_get_wtime();
+
+    int sorted = is_sorted(arr, N);
+    double t_a_delta = t_a - t_start;
+    double t_b_delta = t_b - t_a;
+    double t_c_delta = t_c - t_b;
+    double t_d_delta = t_end - t_c;
+    double t_all = t_end - t_start;
+    printf("%d,%d,%d,%d,%f,%f,%f,%f,%f,%s\n", N, B, 1, T, t_a_delta, t_b_delta, t_c_delta, t_d_delta, t_all,
+           sorted ? "true" : "false");
+
+    free(arr);
 	free(bucket_ind);
 	free_2d_array(buckets, B);
 	return 0;
